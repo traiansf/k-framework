@@ -36,10 +36,10 @@ module Parser where
   stringCharParser :: Parser Char
   stringCharParser =
         normalStringCharParser
-    <|> escapedCharParser
-    <|> escapedAsciiParser
-    <|> escapedShortUnicodeParser
-    <|> escapedLongUnicodeParser
+    <|> try escapedCharParser
+    <|> try (escapedHexStringParser "\\x" 2)
+    <|> try (escapedHexStringParser "\\u" 4)
+    <|> escapedHexStringParser "\\U" 4
 
   normalStringCharParser :: Parser Char
   normalStringCharParser = noneOf ['"', '\n', '\r', '\\']
@@ -55,27 +55,26 @@ module Parser where
       'f' -> return '\f'
       _ -> return ch
 
-  times :: Int -> Parser a -> Parser [a]
-  times n p = sequence (replicate n p)
-
   hexDigitParser :: Parser Int
   hexDigitParser = do
     c <- oneOf (['0' .. '9'] ++ ['A' .. 'F'] ++ ['a' .. 'f'])
     if isDigit c then return (digitToInt c)
-    else return (ord (toUpper c) - ord('A') + 10)
+    else return (ord (toUpper c) - ord 'A' + 10)
 
   fromBaseLTR :: [Int] -> Int -> Int
   fromBaseLTR digits base =
     foldl (\acc digit -> acc * base + digit) 0 digits
 
-  escapedAsciiParser :: Parser Char
-  escapedAsciiParser = do
-    void (string "\\x")
-    digits <- 2 `times` hexDigitParser
-    let x = digits `fromBaseLTR` 16
+  hexDigitsIntParser :: Int -> Parser Int
+  hexDigitsIntParser n = do
+    digits <- replicateM n hexDigitParser
+    return (digits `fromBaseLTR` 16)
+
+  escapedHexStringParser :: String -> Int -> Parser Char
+  escapedHexStringParser prefix digitCount = do
+    void (string prefix)
+    x <- hexDigitsIntParser digitCount
     return (chr x)
-
-
 
   newtype StringLiteral = StringLiteral String
 
